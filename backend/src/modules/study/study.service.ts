@@ -1,0 +1,126 @@
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { KnowledgePoint } from '../../entities/knowledge-point.entity';
+import { QuizQuestion } from '../../entities/quiz-question.entity';
+import { QuizRecord } from '../../entities/quiz-record.entity';
+import { AiService } from '../ai/ai.service';
+
+@Injectable()
+export class StudyService {
+  constructor(
+    @InjectRepository(KnowledgePoint)
+    private knowledgePointRepository: Repository<KnowledgePoint>,
+    @InjectRepository(QuizQuestion)
+    private quizQuestionRepository: Repository<QuizQuestion>,
+    @InjectRepository(QuizRecord)
+    private quizRecordRepository: Repository<QuizRecord>,
+    private aiService: AiService,
+  ) {}
+
+  async getChapterContent(knowledgePointId: string) {
+    const knowledgePoint = await this.knowledgePointRepository.findOne({
+      where: { id: knowledgePointId },
+    });
+    if (!knowledgePoint) {
+      throw new Error('知识点不存在');
+    }
+
+    const explanation = await this.aiService.explainKnowledgePoint(
+      knowledgePointId,
+      knowledgePoint.content,
+    );
+
+    return {
+      ...knowledgePoint,
+      explanation,
+    };
+  }
+
+  async askQuestion(userId: string, planId: string, question: string, context: string) {
+    const answer = await this.aiService.answerQuestion(question, context);
+    return { question, answer };
+  }
+
+  async generateQuiz(knowledgePointId: string) {
+    const knowledgePoint = await this.knowledgePointRepository.findOne({
+      where: { id: knowledgePointId },
+    });
+    if (!knowledgePoint) {
+      throw new Error('知识点不存在');
+    }
+
+    const questions = await this.aiService.generateQuiz(
+      knowledgePointId,
+      knowledgePoint.content,
+    );
+
+    const savedQuestions = [];
+    for (const q of questions) {
+      const quizQuestion = this.quizQuestionRepository.create({
+        knowledgePointId,
+        questionType: q.questionType,
+        question: q.question,
+        options: q.options,
+        correctAnswer: q.correctAnswer,
+        explanation: q.explanation,
+      });
+      const saved = await this.quizQuestionRepository.save(quizQuestion);
+      savedQuestions.push(saved);
+    }
+
+    return savedQuestions;
+  }
+
+  async submitQuiz(
+    userId: string,
+    planId: string,
+    knowledgePointId: string,
+    answers: any[],
+  ) {
+    const questions = await this.quizQuestionRepository.find({
+      where: { knowledgePointId },
+    });
+
+    let correctCount = 0;
+    const results = [];
+
+    for (let i = 0; i < questions.length; i++) {
+      const question = questions[i];
+      const userAnswer = answers[i];
+      const isCorrect = userAnswer === question.correctAnswer;
+      
+      if (isCorrect) correctCount++;
+
+      results.push({
+        questionId: question.id,
+        userAnswer,
+        correctAnswer: question.correctAnswer,
+        isCorrect,
+        explanation: question.explanation,
+      });
+    }
+
+    const score = Math.round((correctCount / questions.length) * 100);
+
+    const record = this.quizRecordRepository.create({
+      userId,
+      planId,
+      knowledgePointId,
+      score,
+      answers,
+    });
+    await this.quizRecordRepository.save(record);
+
+    return {
+      score,
+      totalQuestions: questions.length,
+      correctCount,
+      results,
+    };
+  }
+
+  async getQuizResult(recordId: string) {
+    return this.quizRecordRepository.findOne({ where: { id: recordId } });
+  }
+}
