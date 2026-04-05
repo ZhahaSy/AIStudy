@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Table, Button, Modal, Form, Input, Upload, message, Tag, Space, Popconfirm } from 'antd'
-import { PlusOutlined, UploadOutlined, DeleteOutlined, PlayCircleOutlined } from '@ant-design/icons'
+import { Table, Button, Modal, Form, Input, Upload, message, Tag, Space, Popconfirm, Radio, Tooltip } from 'antd'
+import { PlusOutlined, UploadOutlined, DeleteOutlined, PlayCircleOutlined, ThunderboltOutlined, BookOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 
@@ -10,6 +10,7 @@ interface Material {
   fileUrl: string
   fileType: string
   status: string
+  analyzeMode: string
   createdAt: string
 }
 
@@ -37,12 +38,13 @@ export default function Materials() {
     }
   }
 
-  const handleUpload = async (values: { title: string; file: any }) => {
+  const handleUpload = async (values: { title: string; file: any; analyzeMode: 'quick' | 'deep' }) => {
     try {
       setUploading(true)
-      
+
       const formData = new FormData()
       formData.append('title', values.title)
+      formData.append('analyzeMode', values.analyzeMode || 'quick')
       if (values.file?.file) {
         formData.append('file', values.file.file)
       }
@@ -67,14 +69,28 @@ export default function Materials() {
 
   const handleAnalyze = async (id: string) => {
     try {
-      message.loading('正在AI解析...', 0)
+      message.loading({ content: '正在AI解析，请耐心等待...', key: 'analyze', duration: 0 })
       await api.post(`/materials/${id}/analyze`)
-      message.destroy()
-      message.success('解析完成')
-      fetchMaterials()
+
+      // 轮询状态，最多等 5 分钟
+      const maxAttempts = 60
+      for (let i = 0; i < maxAttempts; i++) {
+        await new Promise(r => setTimeout(r, 5000))
+        const res = await api.get(`/materials/${id}`)
+        if (res.data.status === 'analyzed') {
+          message.success({ content: '解析完成', key: 'analyze' })
+          fetchMaterials()
+          return
+        }
+        if (res.data.status === 'failed') {
+          message.error({ content: '解析失败', key: 'analyze' })
+          fetchMaterials()
+          return
+        }
+      }
+      message.warning({ content: '解析超时，请稍后刷新查看结果', key: 'analyze' })
     } catch (error) {
-      message.destroy()
-      message.error('解析失败')
+      message.error({ content: '解析请求失败', key: 'analyze' })
     }
   }
 
@@ -111,13 +127,25 @@ export default function Materials() {
       render: (type: string) => <Tag color="blue">{type?.toUpperCase() || 'PDF'}</Tag>,
     },
     {
+      title: '解析模式',
+      dataIndex: 'analyzeMode',
+      key: 'analyzeMode',
+      render: (mode: string) => mode === 'deep'
+        ? <Tag color="purple" icon={<BookOutlined />}>细致版</Tag>
+        : <Tag color="orange" icon={<ThunderboltOutlined />}>快速版</Tag>,
+    },
+    {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => {
-        const color = status === 'analyzed' ? 'green' : status === 'failed' ? 'red' : 'default'
-        const text = status === 'analyzed' ? '已解析' : status === 'failed' ? '解析失败' : '待解析'
-        return <Tag color={color}>{text}</Tag>
+        const map: Record<string, { color: string; text: string }> = {
+          analyzed: { color: 'green', text: '已解析' },
+          analyzing: { color: 'processing', text: '解析中...' },
+          failed: { color: 'red', text: '解析失败' },
+        }
+        const s = map[status] || { color: 'default', text: '待解析' }
+        return <Tag color={s.color}>{s.text}</Tag>
       },
     },
     {
@@ -131,11 +159,11 @@ export default function Materials() {
       key: 'action',
       render: (_: any, record: Material) => (
         <Space>
-          {record.status === 'pending' && (
+          {record.status === 'pending' || record.status === 'failed' ? (
             <Button type="link" size="small" onClick={() => handleAnalyze(record.id)}>
               <PlayCircleOutlined /> AI解析
             </Button>
-          )}
+          ) : null}
           {record.status === 'analyzed' && (
             <Button type="link" size="small" onClick={() => handleStartLearning(record.id)}>
               开始学习
@@ -185,6 +213,25 @@ export default function Materials() {
             rules={[{ required: true, message: '请输入资料名称' }]}
           >
             <Input placeholder="例如：Python入门教程" />
+          </Form.Item>
+          <Form.Item
+            name="analyzeMode"
+            label="解析模式"
+            initialValue="quick"
+            rules={[{ required: true }]}
+          >
+            <Radio.Group>
+              <Radio.Button value="quick">
+                <Tooltip title="快速提取3-5个核心知识点，适合快速了解">
+                  <ThunderboltOutlined /> 快速版
+                </Tooltip>
+              </Radio.Button>
+              <Radio.Button value="deep">
+                <Tooltip title="深度分析6-10个知识点，内容详细，适合系统学习">
+                  <BookOutlined /> 细致版
+                </Tooltip>
+              </Radio.Button>
+            </Radio.Group>
           </Form.Item>
           <Form.Item
             name="file"

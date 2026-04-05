@@ -66,7 +66,7 @@ export class LearningService {
     return this.progressRepository.find({
       where: { planId },
       relations: ['knowledgePoint'],
-      order: { id: 'ASC' },
+      order: { knowledgePoint: { chapterIndex: 'ASC' } },
     });
   }
 
@@ -95,7 +95,8 @@ export class LearningService {
   private async unlockNextChapter(planId: string, currentKnowledgePointId: string) {
     const progressList = await this.progressRepository.find({
       where: { planId },
-      order: { id: 'ASC' },
+      relations: ['knowledgePoint'],
+      order: { knowledgePoint: { chapterIndex: 'ASC' } },
     });
 
     const currentIndex = progressList.findIndex(p => p.knowledgePointId === currentKnowledgePointId);

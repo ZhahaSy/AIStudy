@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Card, Tabs, Button, Typography, Space, Input, List, Radio, message, Spin, Result, Modal } from 'antd'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ReadOutlined, CommentOutlined, QuestionCircleOutlined, CheckCircleOutlined } from '@ant-design/icons'
+import { ReadOutlined, CommentOutlined, QuestionCircleOutlined, CheckCircleOutlined, ArrowLeftOutlined } from '@ant-design/icons'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import api from '../services/api'
 
 const { Title, Text, Paragraph } = Typography
@@ -29,6 +31,7 @@ interface QuizResult {
   correctCount: number
   results: Array<{
     questionId: string
+    question: string
     userAnswer: string
     correctAnswer: string
     isCorrect: boolean
@@ -53,6 +56,7 @@ export default function Study() {
   useEffect(() => {
     if (chapterId) {
       fetchChapterContent()
+      fetchChatHistory()
     }
   }, [chapterId])
 
@@ -68,17 +72,27 @@ export default function Study() {
     }
   }
 
+  const fetchChatHistory = async () => {
+    try {
+      const res = await api.get(`/study/chat/${planId}/${chapterId}`)
+      setChatHistory(res.data)
+    } catch {
+      // 历史记录加载失败不影响主流程
+    }
+  }
+
   const handleAskQuestion = async () => {
     if (!question.trim()) return
-    
+
     try {
       setLoading(true)
       const res = await api.post('/study/chat', {
         planId,
+        knowledgePointId: chapterId,
         question,
         context: knowledgePoint?.content
       })
-      setChatHistory([...chatHistory, { question, answer: res.data.answer }])
+      setChatHistory(prev => [...prev, { question, answer: res.data.answer }])
       setQuestion('')
     } catch (error) {
       message.error('提问失败')
@@ -103,11 +117,10 @@ export default function Study() {
   const handleSubmitQuiz = async () => {
     try {
       setSubmitting(true)
-      const answerList = quizQuestions.map(q => answers[q.id] || '')
       const res = await api.post('/study/quiz/submit', {
         planId,
         knowledgePointId: chapterId,
-        answers: answerList
+        answers  // 直接传 Record<questionId, answer>
       })
       setQuizResult(res.data)
       setShowResultModal(true)
@@ -146,14 +159,16 @@ export default function Study() {
           </Card>
           
           <Card title="知识点讲解" style={{ marginBottom: 24 }}>
-            <Paragraph>
+            <div className="md-answer"><ReactMarkdown remarkPlugins={[remarkGfm]}>
               {knowledgePoint?.explanation || knowledgePoint?.content || '加载中...'}
-            </Paragraph>
+            </ReactMarkdown></div>
           </Card>
 
           {knowledgePoint?.summary && (
             <Card title="精简总结" style={{ marginBottom: 24, background: '#f6ffed' }}>
-              <Text>{knowledgePoint.summary}</Text>
+              <div className="md-answer"><ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {knowledgePoint.summary}
+              </ReactMarkdown></div>
             </Card>
           )}
 
@@ -176,9 +191,9 @@ export default function Study() {
       children: (
         <div>
           <Card title="学习内容回顾" style={{ marginBottom: 24 }}>
-            <Paragraph>
-              {knowledgePoint?.summary || knowledgePoint?.content}
-            </Paragraph>
+            <div className="md-answer"><ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {knowledgePoint?.summary || knowledgePoint?.content || ''}
+            </ReactMarkdown></div>
           </Card>
 
           <Card title="提问" style={{ marginBottom: 24 }}>
@@ -203,7 +218,14 @@ export default function Study() {
                   <List.Item>
                     <List.Item.Meta
                       title={<div><QuestionCircleOutlined /> {item.question}</div>}
-                      description={<div><CommentOutlined /> {item.answer}</div>}
+                      description={
+                        <div style={{ marginTop: 4 }}>
+                          <CommentOutlined style={{ marginRight: 6 }} />
+                          <div className="md-answer"><ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {item.answer}
+                          </ReactMarkdown></div>
+                        </div>
+                      }
                     />
                   </List.Item>
                 )}
@@ -270,8 +292,15 @@ export default function Study() {
 
   return (
     <div>
+      <Button
+        icon={<ArrowLeftOutlined />}
+        onClick={() => navigate(`/learning/${planId}`)}
+        style={{ marginBottom: 16 }}
+      >
+        返回学习计划
+      </Button>
       <Spin spinning={loading}>
-        <Tabs 
+        <Tabs
           activeKey={activeTab} 
           onChange={setActiveTab}
           items={tabItems}
@@ -298,22 +327,30 @@ export default function Study() {
             </Title>
             <Text>正确 {quizResult.correctCount}/{quizResult.totalQuestions} 题</Text>
             
-            <div style={{ marginTop: 24 }}>
+            <div style={{ marginTop: 24, textAlign: 'left' }}>
               {quizResult.results.map((result, index) => (
-                <div key={index} style={{ 
-                  padding: '12px', 
+                <div key={index} style={{
+                  padding: '12px',
                   marginBottom: 8,
                   background: result.isCorrect ? '#f6ffed' : '#fff2f0',
                   borderRadius: 4
                 }}>
-                  <Text strong>Q{index + 1}: </Text>
-                  {result.isCorrect ? 
-                    <CheckCircleOutlined style={{ color: '#52c41a' }} /> :
-                    <Text type="danger">✗ 正确答案：{result.correctAnswer}</Text>
-                  }
-                  <Paragraph style={{ marginTop: 8, marginBottom: 0 }}>
-                    <Text type="secondary">解析：{result.explanation}</Text>
-                  </Paragraph>
+                  <Text strong>Q{index + 1}：{result.question}</Text>
+                  <div style={{ marginTop: 6 }}>
+                    {result.isCorrect
+                      ? <Text style={{ color: '#52c41a' }}><CheckCircleOutlined /> 回答正确</Text>
+                      : <>
+                          <Text type="danger">✗ 你的答案：{result.userAnswer || '未作答'}</Text>
+                          <br />
+                          <Text style={{ color: '#52c41a' }}>✓ 正确答案：{result.correctAnswer}</Text>
+                        </>
+                    }
+                  </div>
+                  {!result.isCorrect && result.explanation && (
+                    <div style={{ marginTop: 6 }}>
+                      <Text type="secondary">解析：{result.explanation}</Text>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

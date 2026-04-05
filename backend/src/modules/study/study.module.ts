@@ -5,10 +5,11 @@ import { StudyController } from './study.controller';
 import { KnowledgePoint } from '../../entities/knowledge-point.entity';
 import { QuizQuestion } from '../../entities/quiz-question.entity';
 import { QuizRecord } from '../../entities/quiz-record.entity';
+import { ChatRecord } from '../../entities/chat-record.entity';
 import { AiModule } from '../ai/ai.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([KnowledgePoint, QuizQuestion, QuizRecord]), AiModule],
+  imports: [TypeOrmModule.forFeature([KnowledgePoint, QuizQuestion, QuizRecord, ChatRecord]), AiModule],
   controllers: [StudyController],
   providers: [StudyService],
   exports: [StudyService],

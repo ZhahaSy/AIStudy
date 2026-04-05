@@ -23,11 +23,11 @@ export class MaterialController {
   async upload(
     @Request() req,
     @UploadedFile() file: Express.Multer.File,
-    @Body() body: { title: string }
+    @Body() body: { title: string; analyzeMode?: 'quick' | 'deep' }
   ) {
     const fileUrl = `/uploads/${file.filename}`;
     const fileType = extname(file.originalname).slice(1);
-    return this.materialService.create(req.user.id, body.title, fileUrl, fileType);
+    return this.materialService.create(req.user.id, body.title, fileUrl, fileType, body.analyzeMode || 'quick');
   }
 
   @UseGuards(JwtAuthGuard)
@@ -57,7 +57,11 @@ export class MaterialController {
   @UseGuards(JwtAuthGuard)
   @Post(':id/analyze')
   async analyze(@Param('id') id: string) {
-    return this.materialService.analyze(id);
+    // 立即返回，后台异步执行分析
+    this.materialService.analyze(id).catch(err =>
+      console.error(`[analyze] material ${id} failed:`, err)
+    );
+    return { message: 'analyzing', id };
   }
 
   @UseGuards(JwtAuthGuard)

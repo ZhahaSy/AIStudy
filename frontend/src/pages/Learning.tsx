@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Card, Steps, Button, Typography, Space, message, Spin, Progress } from 'antd'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ReadOutlined, CheckCircleOutlined, LockOutlined } from '@ant-design/icons'
+import { ReadOutlined, CheckCircleOutlined, LockOutlined, ArrowLeftOutlined } from '@ant-design/icons'
 import api from '../services/api'
 
 const { Title, Text } = Typography
@@ -102,6 +102,14 @@ export default function Learning() {
 
   return (
     <div>
+      <Button
+        icon={<ArrowLeftOutlined />}
+        onClick={() => navigate('/materials')}
+        style={{ marginBottom: 16 }}
+      >
+        返回资料列表
+      </Button>
+
       <Card style={{ marginBottom: 24 }}>
         <Title level={4}>{plan?.material?.title || '学习计划'}</Title>
         <Space style={{ marginBottom: 16 }}>

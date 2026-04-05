@@ -16,9 +16,18 @@ export class StudyController {
   @Post('chat')
   async askQuestion(
     @Request() req,
-    @Body() body: { planId: string; question: string; context: string },
+    @Body() body: { planId: string; knowledgePointId: string; question: string; context: string },
   ) {
-    return this.studyService.askQuestion(req.user.id, body.planId, body.question, body.context);
+    return this.studyService.askQuestion(req.user.id, body.planId, body.knowledgePointId, body.question, body.context);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('chat/:planId/:knowledgePointId')
+  async getChatHistory(
+    @Param('planId') planId: string,
+    @Param('knowledgePointId') knowledgePointId: string,
+  ) {
+    return this.studyService.getChatHistory(planId, knowledgePointId);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -31,14 +40,11 @@ export class StudyController {
   @Post('quiz/submit')
   async submitQuiz(
     @Request() req,
-    @Body() body: { planId: string; knowledgePointId: string; answers: any[] },
+    @Body('planId') planId: string,
+    @Body('knowledgePointId') knowledgePointId: string,
+    @Body('answers') answers: Record<string, string>,
   ) {
-    return this.studyService.submitQuiz(
-      req.user.id,
-      body.planId,
-      body.knowledgePointId,
-      body.answers,
-    );
+    return this.studyService.submitQuiz(req.user.id, planId, knowledgePointId, answers);
   }
 
   @UseGuards(JwtAuthGuard)

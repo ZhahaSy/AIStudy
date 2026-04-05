@@ -98,24 +98,40 @@ export class AiService {
     }
   }
 
-  async analyzeMaterial(fileUrl: string, title: string): Promise<KnowledgePointData[]> {
+  async analyzeMaterial(fileUrl: string, title: string, mode: 'quick' | 'deep' = 'quick'): Promise<KnowledgePointData[]> {
     const fileContent = await this.extractFileContent(fileUrl);
 
     let condensed: string;
     if (!fileContent) {
       condensed = '';
+    } else if (mode === 'quick') {
+      // 快速模式：直接截取前段，不做分块摘要
+      condensed = fileContent.slice(0, 3600);
     } else {
+      // 细致模式：两阶段分块摘要
       const chunks = this.chunkText(fileContent);
       if (chunks.length <= 1) {
-        // 内容较短，直接用
         condensed = fileContent.slice(0, 3600);
       } else {
-        // 两阶段：先分块摘要，再汇总
         condensed = await this.buildCondensedSummary(chunks);
       }
     }
 
-    const prompt = `请基于以下学习资料的浓缩摘要，提取3-5个核心知识点。
+    const prompt = mode === 'quick'
+      ? `请基于以下学习资料，快速提取3-5个核心知识点，每个知识点内容简洁，适合"知道就好"的快速了解。
+资料标题：${title}
+${condensed ? `\n资料内容：\n${condensed}\n` : ''}
+请按照以下JSON格式返回知识点列表：
+[
+  {
+    "chapter": "章节名称",
+    "chapterIndex": 章节序号,
+    "title": "知识点标题",
+    "content": "简洁的知识点说明（100字以内）",
+    "summary": "一句话总结"
+  }
+]`
+      : `请基于以下学习资料的浓缩摘要，深度提取6-10个知识点，每个知识点需详细展开，适合系统性深入学习。
 资料标题：${title}
 ${condensed ? `\n浓缩摘要：\n${condensed}\n` : ''}
 请按照以下JSON格式返回知识点列表：
@@ -124,8 +140,8 @@ ${condensed ? `\n浓缩摘要：\n${condensed}\n` : ''}
     "chapter": "章节名称",
     "chapterIndex": 章节序号,
     "title": "知识点标题",
-    "content": "知识点详细内容",
-    "summary": "精简总结（适合'知道就好'的程度）"
+    "content": "详细的知识点内容，包含原理、示例和要点（300字以内）",
+    "summary": "精简总结（适合复习回顾）"
   }
 ]`;
 
