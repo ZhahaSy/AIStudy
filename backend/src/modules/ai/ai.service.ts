@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import * as pdfParse from 'pdf-parse';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pdfParse: (buffer: Buffer) => Promise<{ text: string }> = require('pdf-parse');
 
 interface KnowledgePointData {
   chapter: string;
@@ -21,13 +22,61 @@ interface QuizQuestionData {
 
 @Injectable()
 export class AiService {
-  private claudeBaseUrl = process.env.ANTHROPIC_BASE_URL || 'http://api-ai-coding.bilibili.co/api';
+  private claudeBaseUrl = process.env.ANTHROPIC_BASE_URL || 'http://api-ai-coding.bilibili.co/v1';
   private claudeApiKey = process.env.ANTHROPIC_AUTH_TOKEN || 'sk-aicoding-qA3uksT7ngB7cwcqq2tp7yQkp5kAWLSf';
   
   private miniMaxApiKey = process.env.MINIMAX_API_KEY || 'sk-api-D9X-rWFv0kN6P48ks6YBaSAnOPHI_F-4GVFFjlTJVvqYgF-jFoFWo6CieW8eX49tuP1Kt9xAWgQtl8QXTxjaymeyFe694U6GYcHgF5FoX9h354CyM1bCfRw';
   private miniMaxBaseUrl = 'https://api.minimax.chat/v1/text/chatcompletion_v2';
 
-  private defaultModel = 'claude';
+  private defaultModel = 'miniMax';
+
+  // 按段落语义分块，每块不超过 chunkSize 字符
+  private chunkText(text: string, chunkSize = 1800): string[] {
+    const paragraphs = text.split(/\n{2,}|\r\n{2,}/);
+    const chunks: string[] = [];
+    let current = '';
+
+    for (const para of paragraphs) {
+      const trimmed = para.trim();
+      if (!trimmed) continue;
+
+      if (current.length + trimmed.length + 2 > chunkSize) {
+        if (current) chunks.push(current.trim());
+        // 单段超长则强制截断
+        if (trimmed.length > chunkSize) {
+          for (let i = 0; i < trimmed.length; i += chunkSize) {
+            chunks.push(trimmed.slice(i, i + chunkSize));
+          }
+          current = '';
+        } else {
+          current = trimmed;
+        }
+      } else {
+        current += (current ? '\n\n' : '') + trimmed;
+      }
+    }
+    if (current.trim()) chunks.push(current.trim());
+    return chunks;
+  }
+
+  // 第一阶段：对每个分块提取学习目标和关键概念，合并成浓缩摘要
+  private async buildCondensedSummary(chunks: string[]): Promise<string> {
+    const chunkSummaries: string[] = [];
+
+    for (let i = 0; i < chunks.length; i++) {
+      const prompt = `请从以下文本中提取学习目标和关键概念，用简洁的要点列出（不超过150字）：\n\n${chunks[i]}`;
+      try {
+        const result = this.defaultModel === 'claude'
+          ? await this.claudeChat(prompt)
+          : await this.miniMaxChat(prompt);
+        chunkSummaries.push(`【片段${i + 1}】\n${result}`);
+      } catch {
+        // 单块失败不影响整体
+      }
+    }
+
+    return chunkSummaries.join('\n\n');
+  }
 
   private async extractFileContent(fileUrl: string): Promise<string> {
     try {
@@ -51,12 +100,24 @@ export class AiService {
 
   async analyzeMaterial(fileUrl: string, title: string): Promise<KnowledgePointData[]> {
     const fileContent = await this.extractFileContent(fileUrl);
-    const contentSnippet = fileContent.slice(0, 8000); // 截取前8000字符避免超长
 
-    const prompt = `
-请分析以下学习资料，提取关键知识点。
+    let condensed: string;
+    if (!fileContent) {
+      condensed = '';
+    } else {
+      const chunks = this.chunkText(fileContent);
+      if (chunks.length <= 1) {
+        // 内容较短，直接用
+        condensed = fileContent.slice(0, 3600);
+      } else {
+        // 两阶段：先分块摘要，再汇总
+        condensed = await this.buildCondensedSummary(chunks);
+      }
+    }
+
+    const prompt = `请基于以下学习资料的浓缩摘要，提取3-5个核心知识点。
 资料标题：${title}
-${contentSnippet ? `\n资料内容：\n${contentSnippet}\n` : ''}
+${condensed ? `\n浓缩摘要：\n${condensed}\n` : ''}
 请按照以下JSON格式返回知识点列表：
 [
   {
@@ -66,10 +127,7 @@ ${contentSnippet ? `\n资料内容：\n${contentSnippet}\n` : ''}
     "content": "知识点详细内容",
     "summary": "精简总结（适合'知道就好'的程度）"
   }
-]
-
-请提取3-5个核心知识点。
-`;
+]`;
 
     try {
       if (this.defaultModel === 'claude') {
@@ -93,7 +151,7 @@ ${contentSnippet ? `\n资料内容：\n${contentSnippet}\n` : ''}
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-sonnet-4-5',
           max_tokens: 4000,
           messages: [
             { role: 'user', content: prompt }
@@ -101,6 +159,11 @@ ${contentSnippet ? `\n资料内容：\n${contentSnippet}\n` : ''}
         }),
       });
 
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error('Claude API HTTP错误:', response.status, errText.slice(0, 200));
+        return this.getDefaultKnowledgePoints(title);
+      }
       const data = await response.json();
       const content = data.content?.[0]?.text || '[]';
       return this.parseJsonResult(content);
@@ -119,7 +182,7 @@ ${contentSnippet ? `\n资料内容：\n${contentSnippet}\n` : ''}
           'Authorization': `Bearer ${this.miniMaxApiKey}`,
         },
         body: JSON.stringify({
-          model: 'abab6.5s-chat',
+          model: 'MiniMax-Text-01',
           messages: [
             { role: 'user', content: prompt }
           ],
@@ -223,7 +286,7 @@ ${contentSnippet ? `\n资料内容：\n${contentSnippet}\n` : ''}
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-sonnet-4-5',
           max_tokens: 2000,
           messages: [
             { role: 'user', content: prompt }
@@ -231,6 +294,11 @@ ${contentSnippet ? `\n资料内容：\n${contentSnippet}\n` : ''}
         }),
       });
 
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error('Claude Chat HTTP错误:', response.status, errText.slice(0, 200));
+        throw new Error(`Claude API error: ${response.status}`);
+      }
       const data = await response.json();
       return data.content?.[0]?.text || '抱歉，我无法回答这个问题。';
     } catch (error) {
@@ -248,7 +316,7 @@ ${contentSnippet ? `\n资料内容：\n${contentSnippet}\n` : ''}
           'Authorization': `Bearer ${this.miniMaxApiKey}`,
         },
         body: JSON.stringify({
-          model: 'abab6.5s-chat',
+          model: 'MiniMax-Text-01',
           messages: [
             { role: 'user', content: prompt }
           ],

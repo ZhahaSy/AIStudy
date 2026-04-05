@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"const m = require\\('pdf-parse'\\); console.log\\(typeof m\\); console.log\\(Object.keys\\(m\\).slice\\(0,10\\)\\);\")",
+      "Bash(node -e ':*)",
+      "Bash(pnpm add:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
