@@ -213,7 +213,7 @@ export default function Study() {
           {chatHistory.length > 0 && (
             <Card title="问答记录">
               <List
-                dataSource={chatHistory}
+                dataSource={[...chatHistory].reverse()}
                 renderItem={(item) => (
                   <List.Item>
                     <List.Item.Meta

@@ -348,18 +348,32 @@ ${condensed ? `\n浓缩摘要：\n${condensed}\n` : ''}
   }
 
   async generateQuiz(knowledgePointId: string, content: string): Promise<QuizQuestionData[]> {
-    const prompt = `请基于以下知识点生成3道测验题目：
+    const prompt = `请基于以下知识点生成3道单选题，每道题必须包含4个选项。
 
 知识点：${content}
 
-请返回以下JSON格式的题目：
+严格按照以下JSON数组格式返回，不要有任何其他文字，每道题都必须有options数组：
 [
   {
     "questionType": "choice",
     "question": "题目内容",
-    "options": ["选项A", "选项B", "选项C", "选项D"],
-    "correctAnswer": "正确答案",
-    "explanation": "解析"
+    "options": ["A. 选项一", "B. 选项二", "C. 选项三", "D. 选项四"],
+    "correctAnswer": "A. 选项一",
+    "explanation": "解析说明"
+  },
+  {
+    "questionType": "choice",
+    "question": "题目内容",
+    "options": ["A. 选项一", "B. 选项二", "C. 选项三", "D. 选项四"],
+    "correctAnswer": "B. 选项二",
+    "explanation": "解析说明"
+  },
+  {
+    "questionType": "choice",
+    "question": "题目内容",
+    "options": ["A. 选项一", "B. 选项二", "C. 选项三", "D. 选项四"],
+    "correctAnswer": "C. 选项三",
+    "explanation": "解析说明"
   }
 ]`;
 
@@ -381,7 +395,8 @@ ${condensed ? `\n浓缩摘要：\n${condensed}\n` : ''}
     try {
       const jsonMatch = content.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
+        const parsed: QuizQuestionData[] = JSON.parse(jsonMatch[0]);
+        return parsed.filter(q => q.question && Array.isArray(q.options) && q.options.length > 0 && q.correctAnswer);
       }
       return [];
     } catch {
