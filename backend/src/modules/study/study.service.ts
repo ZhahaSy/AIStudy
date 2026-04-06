@@ -29,15 +29,15 @@ export class StudyService {
       throw new Error('知识点不存在');
     }
 
-    const explanation = await this.aiService.explainKnowledgePoint(
-      knowledgePointId,
-      knowledgePoint.content,
-    );
+    if (!knowledgePoint.explanation) {
+      knowledgePoint.explanation = await this.aiService.explainKnowledgePoint(
+        knowledgePointId,
+        knowledgePoint.content,
+      );
+      await this.knowledgePointRepository.save(knowledgePoint);
+    }
 
-    return {
-      ...knowledgePoint,
-      explanation,
-    };
+    return knowledgePoint;
   }
 
   async askQuestion(userId: string, planId: string, knowledgePointId: string, question: string, context: string) {

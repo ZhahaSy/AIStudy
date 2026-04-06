@@ -26,4 +26,7 @@ export class KnowledgePoint {
 
   @Column({ type: 'text', nullable: true })
   summary: string;
+
+  @Column({ type: 'text', nullable: true })
+  explanation: string;
 }
