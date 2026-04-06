@@ -106,6 +106,13 @@ export default function Materials() {
 
   const handleStartLearning = async (materialId: string) => {
     try {
+      // 先查是否已有该 material 的学习计划
+      const plansRes = await api.get('/learning/plans')
+      const existing = plansRes.data.find((p: { materialId: string; id: string }) => p.materialId === materialId)
+      if (existing) {
+        navigate(`/learning/${existing.id}`)
+        return
+      }
       const res = await api.post('/learning/plans', { materialId })
       message.success('学习计划已创建')
       navigate(`/learning/${res.data.id}`)

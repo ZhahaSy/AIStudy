@@ -1,0 +1,207 @@
+name: Deploy To ECS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-ecs-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare lowercase image owner
+        id: vars
+        run: echo "owner_lc=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Detect ACR secrets
+        id: acr_cfg
+        env:
+          ACR_REGISTRY_SECRET: ${{ secrets.ACR_REGISTRY }}
+        run: |
+          if [ -n "$ACR_REGISTRY_SECRET" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Login to ACR (optional)
+        if: steps.acr_cfg.outputs.enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Compute tags — backend
+        id: tag_backend
+        run: |
+          O="${{ steps.vars.outputs.owner_lc }}"
+          S="${{ github.sha }}"
+          {
+            echo "tags<<__EOT__"
+            echo "ghcr.io/${O}/ai-study-backend:latest"
+            echo "ghcr.io/${O}/ai-study-backend:${S}"
+            if [ -n "${{ secrets.ACR_REGISTRY }}" ]; then
+              R="${{ secrets.ACR_REGISTRY }}"
+              N="${{ secrets.ACR_NAMESPACE }}"
+              echo "${R}/${N}/ai-study-backend:latest"
+              echo "${R}/${N}/ai-study-backend:${S}"
+            fi
+            echo "__EOT__"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Compute tags — frontend
+        id: tag_frontend
+        run: |
+          O="${{ steps.vars.outputs.owner_lc }}"
+          S="${{ github.sha }}"
+          {
+            echo "tags<<__EOT__"
+            echo "ghcr.io/${O}/ai-study-frontend:latest"
+            echo "ghcr.io/${O}/ai-study-frontend:${S}"
+            if [ -n "${{ secrets.ACR_REGISTRY }}" ]; then
+              R="${{ secrets.ACR_REGISTRY }}"
+              N="${{ secrets.ACR_NAMESPACE }}"
+              echo "${R}/${N}/ai-study-frontend:latest"
+              echo "${R}/${N}/ai-study-frontend:${S}"
+            fi
+            echo "__EOT__"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ steps.tag_backend.outputs.tags }}
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ${{ steps.tag_frontend.outputs.tags }}
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    timeout-minutes: 150
+    steps:
+      - name: Checkout (deploy files only)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            deploy
+          sparse-checkout-cone-mode: true
+
+      - name: Prepare lowercase image owner
+        id: vars
+        run: echo "owner_lc=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload compose file to ECS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_KEY }}
+          port: ${{ secrets.ECS_PORT }}
+          timeout: 2m
+          source: "deploy/docker-compose.prod.yml"
+          target: "/opt/ai-study/deploy"
+          strip_components: 1
+
+      - name: Deploy on ECS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_KEY }}
+          port: ${{ secrets.ECS_PORT }}
+          timeout: 2m
+          command_timeout: 120m
+          script: |
+            set -e
+
+            mkdir -p /opt/ai-study/deploy
+            mkdir -p /opt/ai-study/data/uploads
+            mkdir -p /opt/ai-study/data/db
+
+            if [ ! -f /opt/ai-study/deploy/backend.env ]; then
+              echo "Missing /opt/ai-study/deploy/backend.env"
+              exit 1
+            fi
+
+            IMAGE_BASE="ghcr.io/${{ steps.vars.outputs.owner_lc }}"
+            if [ -n "${{ secrets.ACR_REGISTRY }}" ]; then
+              IMAGE_BASE="${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}"
+            fi
+
+            ENV_FILE=/opt/ai-study/deploy/.env
+            TMP_KEEP=$(mktemp)
+            if [ -f "$ENV_FILE" ]; then
+              grep -vE '^(IMAGE_BASE|IMAGE_TAG)=' "$ENV_FILE" > "$TMP_KEEP" || true
+            fi
+            {
+              printf 'IMAGE_BASE=%s\n' "$IMAGE_BASE"
+              printf 'IMAGE_TAG=%s\n' "${{ github.sha }}"
+              [ -s "$TMP_KEEP" ] && cat "$TMP_KEEP"
+            } > "$ENV_FILE"
+
+            if ! grep -qE '^FRONTEND_HOST_PORT=' "$ENV_FILE"; then
+              echo 'FRONTEND_HOST_PORT=8080' >> "$ENV_FILE"
+            fi
+
+            if [ -n "${{ secrets.ACR_REGISTRY }}" ]; then
+              echo "${{ secrets.ACR_PASSWORD }}" | docker login "${{ secrets.ACR_REGISTRY }}" -u "${{ secrets.ACR_USERNAME }}" --password-stdin
+            else
+              echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
+            fi
+
+            cd /opt/ai-study/deploy
+
+            export COMPOSE_HTTP_TIMEOUT=86400
+            export DOCKER_CLIENT_TIMEOUT=86400
+            export COMPOSE_PARALLEL_LIMIT=1
+
+            pull_ok=0
+            for attempt in 1 2 3 4 5; do
+              if docker compose -f docker-compose.prod.yml pull backend \
+                && docker compose -f docker-compose.prod.yml pull frontend; then
+                pull_ok=1
+                break
+              fi
+              echo "[deploy] docker compose pull failed (attempt $attempt/5), retry in 60s..."
+              sleep 60
+            done
+            if [ "$pull_ok" != 1 ]; then
+              echo "[deploy] docker compose pull failed after retries"
+              exit 1
+            fi
+
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans --force-recreate
+            docker image prune -f
