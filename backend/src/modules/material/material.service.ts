@@ -43,6 +43,7 @@ export class MaterialService {
     return this.materialRepository.find({
       where: { userId },
       order: { createdAt: 'DESC' },
+      select: ['id', 'userId', 'title', 'fileUrl', 'fileType', 'analyzeMode', 'status', 'createdAt', 'updatedAt'],
     });
   }
 
@@ -94,10 +95,17 @@ export class MaterialService {
     await this.materialRepository.update(id, { status: 'analyzing' });
 
     try {
+      // 先提取原文并持久化
+      const rawContent = await this.aiService.extractFileContent(material.fileUrl);
+      if (rawContent) {
+        await this.materialRepository.update(id, { rawContent });
+      }
+
       const knowledgePoints = await this.aiService.analyzeMaterial(
         material.fileUrl,
         material.title,
         (material.analyzeMode as 'quick' | 'deep') || 'quick',
+        rawContent || undefined,
       );
 
       for (const kp of knowledgePoints) {
@@ -108,6 +116,7 @@ export class MaterialService {
           title: kp.title,
           content: kp.content,
           summary: kp.summary,
+          sourceContent: kp.sourceContent,
         });
         await this.knowledgePointRepository.save(knowledgePoint);
       }

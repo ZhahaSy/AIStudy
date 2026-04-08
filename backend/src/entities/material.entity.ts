@@ -24,6 +24,9 @@ export class Material {
   @Column({ default: 'quick' })
   analyzeMode: string;
 
+  @Column({ type: 'text', nullable: true })
+  rawContent: string;
+
   @Column({ default: 'pending' })
   status: string;
 

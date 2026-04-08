@@ -90,7 +90,6 @@ export default function Study() {
         planId,
         knowledgePointId: chapterId,
         question,
-        context: knowledgePoint?.content
       })
       setChatHistory(prev => [...prev, { question, answer: res.data.answer }])
       setQuestion('')

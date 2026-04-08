@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { Material } from '../../entities/material.entity';
 import { KnowledgePoint } from '../../entities/knowledge-point.entity';
 import { QuizQuestion } from '../../entities/quiz-question.entity';
 import { QuizRecord } from '../../entities/quiz-record.entity';
@@ -10,6 +11,8 @@ import { AiService } from '../ai/ai.service';
 @Injectable()
 export class StudyService {
   constructor(
+    @InjectRepository(Material)
+    private materialRepository: Repository<Material>,
     @InjectRepository(KnowledgePoint)
     private knowledgePointRepository: Repository<KnowledgePoint>,
     @InjectRepository(QuizQuestion)
@@ -33,6 +36,7 @@ export class StudyService {
       knowledgePoint.explanation = await this.aiService.explainKnowledgePoint(
         knowledgePointId,
         knowledgePoint.content,
+        knowledgePoint.sourceContent,
       );
       await this.knowledgePointRepository.save(knowledgePoint);
     }
@@ -40,8 +44,29 @@ export class StudyService {
     return knowledgePoint;
   }
 
-  async askQuestion(userId: string, planId: string, knowledgePointId: string, question: string, context: string) {
-    const answer = await this.aiService.answerQuestion(question, context);
+  async askQuestion(userId: string, planId: string, knowledgePointId: string, question: string) {
+    const knowledgePoint = await this.knowledgePointRepository.findOne({
+      where: { id: knowledgePointId },
+    });
+
+    const context = knowledgePoint?.sourceContent || knowledgePoint?.content || '';
+
+    let rawContent: string | undefined;
+    if (knowledgePoint?.materialId) {
+      const material = await this.materialRepository.findOne({
+        where: { id: knowledgePoint.materialId },
+        select: ['id', 'rawContent'],
+      });
+      if (material?.rawContent) {
+        if (material.rawContent.length <= 4000) {
+          rawContent = material.rawContent;
+        } else {
+          rawContent = this.aiService.findRelevantChunks(material.rawContent, question);
+        }
+      }
+    }
+
+    const answer = await this.aiService.answerQuestion(question, context, rawContent);
 
     const record = this.chatRecordRepository.create({
       userId,

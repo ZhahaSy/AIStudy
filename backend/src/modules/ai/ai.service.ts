@@ -10,6 +10,7 @@ interface KnowledgePointData {
   title: string;
   content: string;
   summary: string;
+  sourceContent?: string;
 }
 
 interface QuizQuestionData {
@@ -78,7 +79,7 @@ export class AiService {
     return chunkSummaries.join('\n\n');
   }
 
-  private async extractFileContent(fileUrl: string): Promise<string> {
+  async extractFileContent(fileUrl: string): Promise<string> {
     try {
       // fileUrl 格式为 /uploads/xxx.pdf，转为本地路径
       const filePath = join(process.cwd(), fileUrl);
@@ -98,8 +99,8 @@ export class AiService {
     }
   }
 
-  async analyzeMaterial(fileUrl: string, title: string, mode: 'quick' | 'deep' = 'quick'): Promise<KnowledgePointData[]> {
-    const fileContent = await this.extractFileContent(fileUrl);
+  async analyzeMaterial(fileUrl: string, title: string, mode: 'quick' | 'deep' = 'quick', preExtractedContent?: string): Promise<KnowledgePointData[]> {
+    const fileContent = preExtractedContent ?? await this.extractFileContent(fileUrl);
 
     let condensed: string;
     if (!fileContent) {
@@ -118,30 +119,32 @@ export class AiService {
     }
 
     const prompt = mode === 'quick'
-      ? `请基于以下学习资料，快速提取3-5个核心知识点，每个知识点内容简洁，适合"知道就好"的快速了解。
+      ? `请基于以下学习资料，提取资料中的全部知识点（不要遗漏），每个知识点内容简洁，适合"知道就好"的快速了解。
 资料标题：${title}
 ${condensed ? `\n资料内容：\n${condensed}\n` : ''}
-请按照以下JSON格式返回知识点列表：
+请按照以下JSON格式返回知识点列表（sourceContent 为该知识点对应的原文片段，直接从资料中摘取）：
 [
   {
     "chapter": "章节名称",
     "chapterIndex": 章节序号,
     "title": "知识点标题",
     "content": "简洁的知识点说明（100字以内）",
-    "summary": "一句话总结"
+    "summary": "一句话总结",
+    "sourceContent": "该知识点对应的原文片段"
   }
 ]`
-      : `请基于以下学习资料的浓缩摘要，深度提取6-10个知识点，每个知识点需详细展开，适合系统性深入学习。
+      : `请基于以下学习资料的浓缩摘要，提取资料中的全部知识点（不要遗漏），每个知识点需详细展开，包含原理、示例和要点，适合系统性深入学习。
 资料标题：${title}
 ${condensed ? `\n浓缩摘要：\n${condensed}\n` : ''}
-请按照以下JSON格式返回知识点列表：
+请按照以下JSON格式返回知识点列表（sourceContent 为该知识点对应的原文片段，直接从资料中摘取）：
 [
   {
     "chapter": "章节名称",
     "chapterIndex": 章节序号,
     "title": "知识点标题",
     "content": "详细的知识点内容，包含原理、示例和要点（300字以内）",
-    "summary": "精简总结（适合复习回顾）"
+    "summary": "精简总结（适合复习回顾）",
+    "sourceContent": "该知识点对应的原文片段"
   }
 ]`;
 
@@ -252,8 +255,24 @@ ${condensed ? `\n浓缩摘要：\n${condensed}\n` : ''}
     ];
   }
 
-  async explainKnowledgePoint(knowledgePointId: string, content: string): Promise<string> {
-    const prompt = `请用通俗易懂的方式解释以下知识点，确保简洁明了，适合快速学习：
+  async explainKnowledgePoint(knowledgePointId: string, content: string, sourceContent?: string): Promise<string> {
+    const prompt = sourceContent
+      ? `你是一位专业的学习辅导老师。请基于以下原始资料内容，对知识点进行详细讲解。
+
+## 原始资料内容
+${sourceContent}
+
+## 知识点概要
+${content}
+
+请按以下结构输出讲解内容：
+### 核心概念
+（用通俗语言解释核心概念）
+### 详细说明
+（结合原文展开说明，包含关键细节）
+### 要点总结
+（列出 2-3 个关键要点）`
+      : `请用通俗易懂的方式解释以下知识点，确保简洁明了，适合快速学习：
 
 知识点内容：${content}
 
@@ -271,8 +290,21 @@ ${condensed ? `\n浓缩摘要：\n${condensed}\n` : ''}
     }
   }
 
-  async answerQuestion(question: string, context: string): Promise<string> {
-    const prompt = `基于以下学习内容，请回答用户的问题：
+  async answerQuestion(question: string, context: string, rawContent?: string): Promise<string> {
+    const prompt = rawContent
+      ? `你是一位专业的学习辅导老师。请优先基于原始资料内容回答用户的问题，如果原始资料中没有相关信息，再结合知识点内容回答。
+
+## 原始资料内容
+${rawContent}
+
+## 知识点内容
+${context}
+
+## 用户问题
+${question}
+
+请给出准确、详细的回答，引用原文中的关键信息。`
+      : `基于以下学习内容，请回答用户的问题：
 
 学习内容：${context}
 
@@ -345,6 +377,60 @@ ${condensed ? `\n浓缩摘要：\n${condensed}\n` : ''}
       console.error('MiniMax Chat error:', error);
       throw error;
     }
+  }
+
+  findRelevantChunks(rawContent: string, question: string, maxLength = 4000): string {
+    // 按 800 字分块
+    const chunks: string[] = [];
+    for (let i = 0; i < rawContent.length; i += 800) {
+      chunks.push(rawContent.slice(i, i + 800));
+    }
+
+    // 中文停用词
+    const stopWords = new Set(['的', '了', '在', '是', '我', '有', '和', '就', '不', '人', '都', '一', '一个', '上', '也', '很', '到', '说', '要', '去', '你', '会', '着', '没有', '看', '好', '自己', '这', '他', '她', '它', '们', '那', '被', '从', '把', '让', '用', '对', '为', '什么', '怎么', '如何', '哪', '吗', '呢', '吧', '啊', '呀', '嗯', '哦', '哈', '请问', '请', '问']);
+
+    // 提取关键词（>= 2 字，去停用词）
+    const keywords = question
+      .replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length >= 2 && !stopWords.has(w));
+
+    if (keywords.length === 0) {
+      return rawContent.slice(0, maxLength);
+    }
+
+    // 对每个 chunk 评分
+    const scored = chunks.map((chunk, index) => {
+      let score = 0;
+      for (const kw of keywords) {
+        const regex = new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        const matches = chunk.match(regex);
+        if (matches) score += matches.length;
+      }
+      return { chunk, score, index };
+    });
+
+    // 按得分降序
+    scored.sort((a, b) => b.score - a.score);
+
+    // 取 chunk 直到总长度达到 maxLength
+    const selected: typeof scored = [];
+    let totalLen = 0;
+    for (const item of scored) {
+      if (item.score === 0 && selected.length > 0) break;
+      if (totalLen + item.chunk.length > maxLength) break;
+      selected.push(item);
+      totalLen += item.chunk.length;
+    }
+
+    // 无命中时兜底取前 maxLength 字
+    if (selected.length === 0) {
+      return rawContent.slice(0, maxLength);
+    }
+
+    // 按原始顺序拼接
+    selected.sort((a, b) => a.index - b.index);
+    return selected.map(s => s.chunk).join('');
   }
 
   async generateQuiz(knowledgePointId: string, content: string): Promise<QuizQuestionData[]> {

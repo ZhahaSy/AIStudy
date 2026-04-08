@@ -16,9 +16,9 @@ export class StudyController {
   @Post('chat')
   async askQuestion(
     @Request() req,
-    @Body() body: { planId: string; knowledgePointId: string; question: string; context: string },
+    @Body() body: { planId: string; knowledgePointId: string; question: string },
   ) {
-    return this.studyService.askQuestion(req.user.id, body.planId, body.knowledgePointId, body.question, body.context);
+    return this.studyService.askQuestion(req.user.id, body.planId, body.knowledgePointId, body.question);
   }
 
   @UseGuards(JwtAuthGuard)
