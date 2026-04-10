@@ -3,7 +3,7 @@ name: ai-study
 # ECS 上 deploy/.env 示例：
 #   IMAGE_BASE=...
 #   IMAGE_TAG=...
-#   FRONTEND_HOST_PORT=8080
+#   FRONTEND_HOST_PORT=8081
 
 services:
   backend:

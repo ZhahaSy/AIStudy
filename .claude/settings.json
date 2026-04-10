@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/v_zhangshuangyi/self/my-turborepo/deploy/**)",
+      "Read(//Users/v_zhangshuangyi/.ssh/**)"
+    ]
+  }
+}

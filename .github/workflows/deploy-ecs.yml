@@ -173,7 +173,7 @@ jobs:
             } > "$ENV_FILE"
 
             if ! grep -qE '^FRONTEND_HOST_PORT=' "$ENV_FILE"; then
-              echo 'FRONTEND_HOST_PORT=8080' >> "$ENV_FILE"
+              echo 'FRONTEND_HOST_PORT=8081' >> "$ENV_FILE"
             fi
 
             if [ -n "${{ secrets.ACR_REGISTRY }}" ]; then
