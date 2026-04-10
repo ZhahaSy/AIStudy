@@ -19,7 +19,7 @@ import { AiModule } from './modules/ai/ai.module';
     }),
     TypeOrmModule.forRoot({
       type: 'sqlite',
-      database: 'ai_learning.db',
+      database: 'data/ai_learning.db',
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
       synchronize: true,
       logging: false,
