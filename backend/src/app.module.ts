@@ -18,8 +18,9 @@ import { AiModule } from './modules/ai/ai.module';
       serveRoot: '/uploads',
     }),
     TypeOrmModule.forRoot({
-      type: 'better-sqlite3',
-      database: 'data/ai_learning.db',
+      type: 'sqljs',
+      location: 'data/ai_learning.db',
+      autoSave: true,
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
       synchronize: true,
       logging: false,
