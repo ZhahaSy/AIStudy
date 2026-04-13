@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Form, Input, Button, Card, message } from 'antd'
-import { UserOutlined, LockOutlined, MailOutlined } from '@ant-design/icons'
+import { UserOutlined, LockOutlined, MailOutlined, KeyOutlined } from '@ant-design/icons'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '../stores/auth'
 
@@ -9,10 +9,10 @@ export default function Register() {
   const navigate = useNavigate()
   const register = useAuthStore((state) => state.register)
 
-  const onFinish = async (values: { email: string; password: string; nickname?: string }) => {
+  const onFinish = async (values: { email: string; password: string; nickname?: string; inviteCode: string }) => {
     setLoading(true)
     try {
-      await register(values.email, values.password, values.nickname)
+      await register(values.email, values.password, values.nickname, values.inviteCode)
       message.success('注册成功')
       navigate('/home')
     } catch (error: any) {
@@ -37,6 +37,13 @@ export default function Register() {
           onFinish={onFinish}
           autoComplete="off"
         >
+          <Form.Item
+            name="inviteCode"
+            rules={[{ required: true, message: '请输入邀请码' }]}
+          >
+            <Input prefix={<KeyOutlined />} placeholder="邀请码" size="large" />
+          </Form.Item>
+
           <Form.Item
             name="email"
             rules={[
