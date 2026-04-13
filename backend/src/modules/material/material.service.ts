@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { unlinkSync } from 'fs';
+import { join } from 'path';
 import { Material } from '../../entities/material.entity';
 import { KnowledgePoint } from '../../entities/knowledge-point.entity';
 import { LearningPlan } from '../../entities/learning-plan.entity';
@@ -83,7 +85,14 @@ export class MaterialService {
     }
 
     await this.materialRepository.delete(id);
+    this.removePhysicalFile(material.fileUrl);
     return true;
+  }
+
+  private removePhysicalFile(fileUrl: string) {
+    try {
+      unlinkSync(join(process.cwd(), fileUrl));
+    } catch {}
   }
 
   async analyze(id: string) {
@@ -122,6 +131,7 @@ export class MaterialService {
       }
 
       await this.materialRepository.update(id, { status: 'analyzed' });
+      this.removePhysicalFile(material.fileUrl);
     } catch (err) {
       await this.materialRepository.update(id, { status: 'failed' });
       throw err;
