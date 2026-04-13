@@ -2,6 +2,7 @@ import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, CreateDateColumn } f
 import { User } from './user.entity';
 import { LearningPlan } from './learning-plan.entity';
 import { KnowledgePoint } from './knowledge-point.entity';
+import { Material } from './material.entity';
 
 @Entity('chat_records')
 export class ChatRecord {
@@ -14,17 +15,23 @@ export class ChatRecord {
   @ManyToOne(() => User)
   user: User;
 
-  @Column()
+  @Column({ nullable: true })
   planId: string;
 
   @ManyToOne(() => LearningPlan)
   plan: LearningPlan;
 
-  @Column()
+  @Column({ nullable: true })
   knowledgePointId: string;
 
   @ManyToOne(() => KnowledgePoint)
   knowledgePoint: KnowledgePoint;
+
+  @Column({ nullable: true })
+  materialId: string;
+
+  @ManyToOne(() => Material)
+  material: Material;
 
   @Column({ type: 'text' })
   question: string;

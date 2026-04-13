@@ -13,6 +13,7 @@ import Home from './pages/Home'
 import Materials from './pages/Materials'
 import Learning from './pages/Learning'
 import Study from './pages/Study'
+import MaterialChat from './pages/MaterialChat'
 import UserCenter from './pages/UserCenter'
 
 const { Sider, Content } = Layout
@@ -116,6 +117,14 @@ function App() {
         element={
           <PrivateRoute>
             <AppLayout><Study /></AppLayout>
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/material-chat/:materialId"
+        element={
+          <PrivateRoute>
+            <AppLayout><MaterialChat /></AppLayout>
           </PrivateRoute>
         }
       />

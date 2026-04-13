@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Table, Button, Modal, Form, Input, Upload, message, Tag, Space, Popconfirm, Radio, Tooltip } from 'antd'
-import { PlusOutlined, UploadOutlined, DeleteOutlined, PlayCircleOutlined, ThunderboltOutlined, BookOutlined } from '@ant-design/icons'
+import { PlusOutlined, UploadOutlined, DeleteOutlined, PlayCircleOutlined, ThunderboltOutlined, BookOutlined, CommentOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 
@@ -174,6 +174,11 @@ export default function Materials() {
           {record.status === 'analyzed' && (
             <Button type="link" size="small" onClick={() => handleStartLearning(record.id)}>
               开始学习
+            </Button>
+          )}
+          {record.status === 'analyzed' && (
+            <Button type="link" size="small" onClick={() => navigate(`/material-chat/${record.id}`)}>
+              <CommentOutlined /> 直接提问
             </Button>
           )}
           <Popconfirm title="确定删除?" onConfirm={() => handleDelete(record.id)}>

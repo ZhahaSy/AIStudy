@@ -52,4 +52,22 @@ export class StudyController {
   async getQuizResult(@Param('id') id: string) {
     return this.studyService.getQuizResult(id);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('material-chat')
+  async askMaterialQuestion(
+    @Request() req,
+    @Body() body: { materialId: string; question: string },
+  ) {
+    return this.studyService.askMaterialQuestion(req.user.id, body.materialId, body.question);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('material-chat/:materialId')
+  async getMaterialChatHistory(
+    @Request() req,
+    @Param('materialId') materialId: string,
+  ) {
+    return this.studyService.getMaterialChatHistory(materialId, req.user.id);
+  }
 }

@@ -173,4 +173,51 @@ export class StudyService {
   async getQuizResult(recordId: string) {
     return this.quizRecordRepository.findOne({ where: { id: recordId } });
   }
+
+  async askMaterialQuestion(userId: string, materialId: string, question: string) {
+    const material = await this.materialRepository.findOne({
+      where: { id: materialId },
+      select: ['id', 'rawContent'],
+    });
+    if (!material) {
+      throw new Error('资料不存在');
+    }
+
+    const knowledgePoints = await this.knowledgePointRepository.find({
+      where: { materialId },
+    });
+
+    const context = knowledgePoints
+      .map((kp) => `【${kp.chapter} - ${kp.title}】\n${kp.content}`)
+      .join('\n\n');
+
+    let rawContent: string | undefined;
+    if (material.rawContent) {
+      if (material.rawContent.length <= 4000) {
+        rawContent = material.rawContent;
+      } else {
+        rawContent = this.aiService.findRelevantChunks(material.rawContent, question);
+      }
+    }
+
+    const answer = await this.aiService.answerQuestion(question, context, rawContent);
+
+    const record = this.chatRecordRepository.create({
+      userId,
+      materialId,
+      question,
+      answer,
+    });
+    await this.chatRecordRepository.save(record);
+
+    return { question, answer };
+  }
+
+  async getMaterialChatHistory(materialId: string, userId: string) {
+    return this.chatRecordRepository.find({
+      where: { materialId, userId },
+      order: { createdAt: 'ASC' },
+      select: ['id', 'question', 'answer', 'createdAt'],
+    });
+  }
 }
