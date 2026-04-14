@@ -9,9 +9,10 @@ import { LearningProgress } from '../../entities/learning-progress.entity';
 import { QuizQuestion } from '../../entities/quiz-question.entity';
 import { QuizRecord } from '../../entities/quiz-record.entity';
 import { AiModule } from '../ai/ai.module';
+import { RagModule } from '../rag/rag.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Material, KnowledgePoint, LearningPlan, LearningProgress, QuizQuestion, QuizRecord]), AiModule],
+  imports: [TypeOrmModule.forFeature([Material, KnowledgePoint, LearningPlan, LearningProgress, QuizQuestion, QuizRecord]), AiModule, RagModule],
   controllers: [MaterialController],
   providers: [MaterialService],
   exports: [MaterialService],

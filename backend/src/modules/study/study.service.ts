@@ -7,6 +7,7 @@ import { QuizQuestion } from '../../entities/quiz-question.entity';
 import { QuizRecord } from '../../entities/quiz-record.entity';
 import { ChatRecord } from '../../entities/chat-record.entity';
 import { AiService } from '../ai/ai.service';
+import { RagService } from '../rag/rag.service';
 
 @Injectable()
 export class StudyService {
@@ -22,6 +23,7 @@ export class StudyService {
     @InjectRepository(ChatRecord)
     private chatRecordRepository: Repository<ChatRecord>,
     private aiService: AiService,
+    private ragService: RagService,
   ) {}
 
   async getChapterContent(knowledgePointId: string) {
@@ -58,10 +60,13 @@ export class StudyService {
         select: ['id', 'rawContent'],
       });
       if (material?.rawContent) {
-        if (material.rawContent.length <= 4000) {
-          rawContent = material.rawContent;
-        } else {
-          rawContent = this.aiService.findRelevantChunks(material.rawContent, question);
+        try {
+          const chunks = await this.ragService.retrieveChunks(material.id, question, 5);
+          rawContent = chunks.join('\n\n');
+        } catch {
+          rawContent = material.rawContent.length <= 4000
+            ? material.rawContent
+            : this.aiService.findRelevantChunks(material.rawContent, question);
         }
       }
     }
@@ -193,10 +198,13 @@ export class StudyService {
 
     let rawContent: string | undefined;
     if (material.rawContent) {
-      if (material.rawContent.length <= 4000) {
-        rawContent = material.rawContent;
-      } else {
-        rawContent = this.aiService.findRelevantChunks(material.rawContent, question);
+      try {
+        const chunks = await this.ragService.retrieveChunks(materialId, question, 5);
+        rawContent = chunks.join('\n\n');
+      } catch {
+        rawContent = material.rawContent.length <= 4000
+          ? material.rawContent
+          : this.aiService.findRelevantChunks(material.rawContent, question);
       }
     }
 

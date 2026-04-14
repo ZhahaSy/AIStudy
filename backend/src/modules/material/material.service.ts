@@ -10,6 +10,7 @@ import { LearningProgress } from '../../entities/learning-progress.entity';
 import { QuizQuestion } from '../../entities/quiz-question.entity';
 import { QuizRecord } from '../../entities/quiz-record.entity';
 import { AiService } from '../ai/ai.service';
+import { RagService } from '../rag/rag.service';
 
 @Injectable()
 export class MaterialService {
@@ -27,6 +28,7 @@ export class MaterialService {
     @InjectRepository(QuizRecord)
     private quizRecordRepository: Repository<QuizRecord>,
     private aiService: AiService,
+    private ragService: RagService,
   ) {}
 
   async create(userId: string, title: string, fileUrl: string, fileType: string, analyzeMode: 'quick' | 'deep' = 'quick') {
@@ -85,6 +87,7 @@ export class MaterialService {
     }
 
     await this.materialRepository.delete(id);
+    await this.ragService.deleteIndex(id);
     this.removePhysicalFile(material.fileUrl);
     return true;
   }
@@ -108,6 +111,10 @@ export class MaterialService {
       const rawContent = await this.aiService.extractFileContent(material.fileUrl);
       if (rawContent) {
         await this.materialRepository.update(id, { rawContent });
+        // 异步构建向量索引，不阻塞主流程
+        this.ragService.buildIndex(id, rawContent).catch((err) => {
+          console.error('RAG buildIndex failed:', err);
+        });
       }
 
       const knowledgePoints = await this.aiService.analyzeMaterial(

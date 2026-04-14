@@ -8,9 +8,10 @@ import { QuizQuestion } from '../../entities/quiz-question.entity';
 import { QuizRecord } from '../../entities/quiz-record.entity';
 import { ChatRecord } from '../../entities/chat-record.entity';
 import { AiModule } from '../ai/ai.module';
+import { RagModule } from '../rag/rag.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Material, KnowledgePoint, QuizQuestion, QuizRecord, ChatRecord]), AiModule],
+  imports: [TypeOrmModule.forFeature([Material, KnowledgePoint, QuizQuestion, QuizRecord, ChatRecord]), AiModule, RagModule],
   controllers: [StudyController],
   providers: [StudyService],
   exports: [StudyService],

@@ -10,6 +10,7 @@ import { MaterialModule } from './modules/material/material.module';
 import { LearningModule } from './modules/learning/learning.module';
 import { StudyModule } from './modules/study/study.module';
 import { AiModule } from './modules/ai/ai.module';
+import { RagModule } from './modules/rag/rag.module';
 
 @Module({
   imports: [
@@ -19,7 +20,7 @@ import { AiModule } from './modules/ai/ai.module';
     }),
     TypeOrmModule.forRoot({
       type: 'sqljs',
-      location: 'data/ai_learning.db',
+      location: process.env.DB_PATH || join(__dirname, '..', 'data', 'ai_learning.db'),
       autoSave: true,
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
       synchronize: true,
@@ -37,6 +38,7 @@ import { AiModule } from './modules/ai/ai.module';
     LearningModule,
     StudyModule,
     AiModule,
+    RagModule,
   ],
 })
 export class AppModule {}
