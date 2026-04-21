@@ -60,7 +60,7 @@ export class RagService {
   async retrieveChunks(
     materialId: string,
     query: string,
-    topK = 5,
+    topK = 8,
   ): Promise<string[]> {
     const chunks = await this.chunkRepository.find({
       where: { materialId },
@@ -71,7 +71,7 @@ export class RagService {
       throw new Error('No chunks found for this material');
     }
 
-    const [queryEmbedding] = await this.embedTexts([query]);
+    const [queryEmbedding] = await this.embedTexts([query], 'query');
 
     const scored = chunks.map((chunk) => ({
       content: chunk.content,
@@ -82,14 +82,32 @@ export class RagService {
     }));
 
     scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, topK).map((s) => s.content);
+
+    this.logger.debug(
+      `Query: "${query}" | Top scores: ${scored
+        .slice(0, 5)
+        .map((s) => s.score.toFixed(4))
+        .join(', ')}`,
+    );
+
+    // 过滤掉相似度过低的 chunk（阈值 0.3）
+    const filtered = scored
+      .slice(0, topK)
+      .filter((s) => s.score >= 0.3);
+
+    return filtered.length > 0
+      ? filtered.map((s) => s.content)
+      : scored.slice(0, topK).map((s) => s.content);
   }
 
   async deleteIndex(materialId: string): Promise<void> {
     await this.chunkRepository.delete({ materialId });
   }
 
-  private async embedTexts(texts: string[]): Promise<number[][]> {
+  private async embedTexts(
+    texts: string[],
+    type: 'db' | 'query' = 'db',
+  ): Promise<number[][]> {
     const response = await fetch(
       'https://api.minimax.chat/v1/embeddings',
       {
@@ -100,8 +118,8 @@ export class RagService {
         },
         body: JSON.stringify({
           model: 'embo-01',
-          input: texts,
-          type: 'db',
+          texts,
+          type,
         }),
       },
     );
@@ -111,8 +129,19 @@ export class RagService {
       throw new Error(`MiniMax Embedding API error: ${response.status} ${err}`);
     }
 
+    
     const data = await response.json();
-    return data.data.map((item: { embedding: number[] }) => item.embedding);
+
+    if (!data.vectors || !Array.isArray(data.vectors)) {
+      this.logger.error(
+        `MiniMax Embedding unexpected response: ${JSON.stringify(data).slice(0, 500)}`,
+      );
+      throw new Error(
+        `MiniMax Embedding API returned invalid data: ${data.base_resp?.status_msg || JSON.stringify(data).slice(0, 200)}`,
+      );
+    }
+
+    return data.vectors;
   }
 
   private cosineSimilarity(a: number[], b: number[]): number {
